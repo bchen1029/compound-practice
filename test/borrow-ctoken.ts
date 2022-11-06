@@ -260,6 +260,22 @@ describe("compound", function () {
       expect(await cTokenB.balanceOf(user2.address)).to.above(0) // user2's cTokenB increased because seized user1's collateral
     })
 
+    it("Should user1 liquidated reverte because repayAmount above close factor", async function () {
+      const [owner, user1, user2] = await ethers.getSigners()
+      const {comptroller, cTokenB, cTokenA, tokenA} = await loadFixture(borrowFixture)
+
+      // decrease tokenB collateral factor from 0.5 to 0.4
+      await comptroller._setCollateralFactor(cTokenB.address,
+        ethers.utils.parseUnits("0.4", "18")
+      )
+
+      // user2 borrow 30 tokenA to user1 for liquidating and seize tokenB collateral
+      await tokenA.connect(user2).approve(cTokenA.address, ethers.utils.parseUnits("30", "18"))
+
+      // user2 liquidating would fail because repayAmount maximize is 0.5 * 50
+      expect(cTokenA.connect(user2).liquidateBorrow(user1.address, ethers.utils.parseUnits("30", "18"), cTokenB.address)).to.revertedWithCustomError(cTokenA, "LiquidateComptrollerRejection")
+    })
+
     it("Should user1 be liquidated when tokenB depreciated from $100 to $50", async function () {
       const [owner, user1, user2] = await ethers.getSigners()
       const {simplePriceOracle, cTokenB, cTokenA, tokenA} = await loadFixture(borrowFixture)
