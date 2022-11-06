@@ -2,19 +2,16 @@ import { loadFixture } from "@nomicfoundation/hardhat-network-helpers"
 import { expect } from "chai"
 import { ethers } from "hardhat"
 
-const TOKEN_A_INITIAL_SUPPLY = ethers.utils.parseUnits("10000", "18")
-const TOKEN_B_INITIAL_SUPPLY = ethers.utils.parseUnits("10000", "18")
-const USER1_INITAL_TOKEN_B_BALANCE = ethers.utils.parseUnits("1", "18")
-const USER2_INITAL_TOKEN_A_BALANCE = ethers.utils.parseUnits("150", "18")
-
 describe("compound", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
   async function deployFixture() {
+    const TOKEN_A_INITIAL_SUPPLY = ethers.utils.parseUnits("10000", "18")
+    const TOKEN_B_INITIAL_SUPPLY = ethers.utils.parseUnits("10000", "18")
 
     // Contracts are deployed using the first signer/account by default
-    const [owner, user1, user2, otherAccount] = await ethers.getSigners()
+    const [owner] = await ethers.getSigners()
 
     // Comptroller
     const ComptrollerContract = await ethers.getContractFactory("Comptroller")
@@ -79,6 +76,32 @@ describe("compound", function () {
     )
     await cErc20FBT.deployed()
 
+    return {
+      comptroller,
+      simplePriceOracle,
+      interestRateModel,
+      sbtErc20,
+      fbtErc20,
+      cErc20SBT,
+      cErc20FBT,
+    }
+  }
+
+  async function initSettingFixture() {
+    const USER1_INITAL_TOKEN_B_BALANCE = ethers.utils.parseUnits("1", "18")
+    const USER2_INITAL_TOKEN_A_BALANCE = ethers.utils.parseUnits("150", "18")
+
+    const [owner, user1, user2] = await ethers.getSigners()
+    const deployResult = await loadFixture(deployFixture)
+    const {
+      comptroller,
+      simplePriceOracle,
+      cErc20SBT,
+      cErc20FBT,
+      sbtErc20,
+      fbtErc20
+    } = deployResult
+
     // _setPriceOracle, 設定新的 price oracle
     await comptroller._setPriceOracle(simplePriceOracle.address)
 
@@ -119,36 +142,18 @@ describe("compound", function () {
     await sbtErc20.transfer(user2.address, USER2_INITAL_TOKEN_A_BALANCE)
 
     return {
-      owner,
-      user1,
-      user2,
-      otherAccount,
-      comptroller,
-      simplePriceOracle,
-      interestRateModel,
-      sbtErc20,
-      fbtErc20,
-      cErc20SBT,
-      cErc20FBT,
+      ...deployResult
     }
   }
 
-  describe("Deployment", function () {
-    it("Should has the right amount ERC20 Tokens", async function () {
-      const { user1, user2, sbtErc20, fbtErc20 } = await loadFixture(deployFixture)
-
-      expect(await sbtErc20.balanceOf(user2.address)).to.equal(USER2_INITAL_TOKEN_A_BALANCE)
-      expect(await fbtErc20.balanceOf(user1.address)).to.equal(USER1_INITAL_TOKEN_B_BALANCE)
-    })
-  })
-
-  async function mintCTokenFixture() {
-    const deployFixtureResult = await loadFixture(deployFixture)
-    const { user1, user2, fbtErc20, cErc20FBT, sbtErc20, cErc20SBT } = deployFixtureResult
-
+  async function borrowFixture() {
     const USER1_MINT_TOKEN_B_AMOUNT = ethers.utils.parseUnits("1", "18")
     const USER2_MINT_TOKEN_A_AMOUNT = ethers.utils.parseUnits("50", "18")
-    const USER1_BORROW_TOKEN_A_AMOUNT = ethers.utils.parseUnits("50", "18")
+
+    const fixtureResult = await loadFixture(initSettingFixture)
+    const [owner, user1, user2] = await ethers.getSigners()
+    const { fbtErc20, cErc20FBT, sbtErc20, cErc20SBT } = fixtureResult
+
 
     // user1 mint 1 cTokenB
     await fbtErc20.connect(user1).approve(cErc20FBT.address, USER1_MINT_TOKEN_B_AMOUNT)
@@ -159,77 +164,116 @@ describe("compound", function () {
     await sbtErc20.connect(user2).approve(cErc20SBT.address, USER2_MINT_TOKEN_A_AMOUNT)
     await cErc20SBT.connect(user2).mint(USER2_MINT_TOKEN_A_AMOUNT)
 
+    // user1 borrow 50 TokenA with 1 tokenB as collateral
+    await cErc20SBT.connect(user1).borrow(ethers.utils.parseUnits("50", "18"))
+
     return {
-      ...deployFixtureResult,
-      USER1_MINT_TOKEN_B_AMOUNT,
-      USER2_MINT_TOKEN_A_AMOUNT,
-      USER1_BORROW_TOKEN_A_AMOUNT
+      ...fixtureResult
     }
   }
 
+  describe("Deployment", function () {
+    it("Should user1 owns 1 tokenB", async function () {
+      const [owner, user1, user2] = await ethers.getSigners()
+      const { fbtErc20 } = await loadFixture(initSettingFixture)
+
+      expect(await fbtErc20.balanceOf(user1.address)).to.equal(ethers.utils.parseUnits("1", "18"))
+    })
+
+    it("Should user2 owns 150 tokenA", async function () {
+      const [owner, user1, user2] = await ethers.getSigners()
+      const { sbtErc20 } = await loadFixture(initSettingFixture)
+
+      expect(await sbtErc20.balanceOf(user2.address)).to.equal(ethers.utils.parseUnits("150", "18"))
+    })
+
+    it("Should comptroller oracle is simplePriceOracle", async function () {
+      const { comptroller, simplePriceOracle } = await loadFixture(initSettingFixture)
+
+      expect(await comptroller.oracle()).to.equal(simplePriceOracle.address)
+    })
+
+    it("Should tokenA price is $1 USD", async function () {
+      const { simplePriceOracle, cErc20SBT } = await loadFixture(initSettingFixture)
+
+      expect(await simplePriceOracle.getUnderlyingPrice(cErc20SBT.address)).to.equal(ethers.utils.parseUnits("1", "18"))
+    })
+
+    it("Should tokenB price is $100 USD", async function () {
+      const { simplePriceOracle, cErc20FBT } = await loadFixture(initSettingFixture)
+
+      expect(await simplePriceOracle.getUnderlyingPrice(cErc20FBT.address)).to.equal(ethers.utils.parseUnits("100", "18"))
+    })
+
+    it("Should tokenA and tokenB are listed on markets", async function () {
+      const { comptroller, cErc20SBT, cErc20FBT } = await loadFixture(initSettingFixture)
+
+      const marketOfTokenA = await comptroller.markets(cErc20SBT.address)
+      const marketOfTokenB = await comptroller.markets(cErc20FBT.address)
+
+      expect(marketOfTokenA.isListed).to.equal(true)
+      expect(marketOfTokenB.isListed).to.equal(true)
+    })
+
+    it("Should collateralFactor of tokenB is 0.5", async function () {
+      const { comptroller, cErc20FBT } = await loadFixture(initSettingFixture)
+
+      const marketOfTokenB = await comptroller.markets(cErc20FBT.address)
+
+      expect(marketOfTokenB.collateralFactorMantissa).to.equal(ethers.utils.parseUnits("0.5", "18"))
+    })
+
+    it("Should liquidationIncentive is 0.08", async function () {
+      const { comptroller } = await loadFixture(initSettingFixture)
+
+      expect(await comptroller.liquidationIncentiveMantissa()).to.equal(ethers.utils.parseUnits("0.08", "18"))
+    })
+
+    it("Should close factor is 0.5", async function () {
+      const { comptroller } = await loadFixture(initSettingFixture)
+
+      expect(await comptroller.closeFactorMantissa()).to.equal(ethers.utils.parseUnits("0.5", "18"))
+    })
+  })
+
   describe("Borrow feature", function () {
     it("Should user1 borrow right amount tokenA with 1 tokenB as collateral", async function () {
-      const { user1,
-        sbtErc20,
-        cErc20SBT,
-        USER1_BORROW_TOKEN_A_AMOUNT
-      } = await loadFixture(mintCTokenFixture)
-
-      // user1 borrow 50 TokenA with 1 tokenB as collateral
-      await cErc20SBT.connect(user1).borrow(USER1_BORROW_TOKEN_A_AMOUNT)
-      expect(await sbtErc20.balanceOf(user1.address)).to.equal(USER1_BORROW_TOKEN_A_AMOUNT)
+      const [owner, user1, user2] = await ethers.getSigners()
+      const {sbtErc20} = await loadFixture(borrowFixture)
+      
+      expect(await sbtErc20.balanceOf(user1.address)).to.equal(ethers.utils.parseUnits("50", "18"))
     })
 
     it("Should user1 be liquidated when collateral factor of tokenB decreased from 0.5 to 0.4", async function () {
-      const {
-        user1,
-        user2,
-        sbtErc20,
-        cErc20SBT,
-        cErc20FBT,
-        comptroller,
-        USER1_BORROW_TOKEN_A_AMOUNT,
-      } = await loadFixture(mintCTokenFixture)
-
-      // user1 borrow 50 TokenA with 1 tokenB as collateral
-      await cErc20SBT.connect(user1).borrow(USER1_BORROW_TOKEN_A_AMOUNT)
+      const [owner, user1, user2] = await ethers.getSigners()
+      const {comptroller, cErc20FBT, cErc20SBT, sbtErc20} = await loadFixture(borrowFixture)
 
       // decrease tokenB collateral factor from 0.5 to 0.4
       await comptroller._setCollateralFactor(cErc20FBT.address,
         ethers.utils.parseUnits("0.4", "18")
       )
-      
+
       // user2 borrow 25 tokenA to user1 for liquidating and seize tokenB collateral
       await sbtErc20.connect(user2).approve(cErc20SBT.address, ethers.utils.parseUnits("25", "18"))
       await cErc20SBT.connect(user2).liquidateBorrow(user1.address, ethers.utils.parseUnits("25", "18"), cErc20FBT.address)
-      
+
       expect(await cErc20FBT.balanceOf(user2.address)).to.above(0) // user2's cTokenB increased because seized user1's collateral
     })
 
     it("Should user1 be liquidated when tokenB depreciated from $100 to $50", async function () {
-      const {
-        user1,
-        user2,
-        sbtErc20,
-        cErc20SBT,
-        cErc20FBT,
-        USER1_BORROW_TOKEN_A_AMOUNT,
-        simplePriceOracle
-      } = await loadFixture(mintCTokenFixture)
-
-      // user1 borrow 50 TokenA with 1 tokenB as collateral
-      await cErc20SBT.connect(user1).borrow(USER1_BORROW_TOKEN_A_AMOUNT)
+      const [owner, user1, user2] = await ethers.getSigners()
+      const {simplePriceOracle, cErc20FBT, cErc20SBT, sbtErc20} = await loadFixture(borrowFixture)
 
       // depreciate tokenB price to make user1 can be liquidated
       await simplePriceOracle.setUnderlyingPrice(
         cErc20FBT.address,
         ethers.utils.parseUnits("50", "18")
       )
-      
+
       // user2 borrow 25 tokenA to user1 for liquidating and seize tokenB collateral
       await sbtErc20.connect(user2).approve(cErc20SBT.address, ethers.utils.parseUnits("25", "18"))
       await cErc20SBT.connect(user2).liquidateBorrow(user1.address, ethers.utils.parseUnits("25", "18"), cErc20FBT.address)
-      
+
       expect(await cErc20FBT.balanceOf(user2.address)).to.above(0) // user2's cTokenB increased because seized user1's collateral
     })
   })
