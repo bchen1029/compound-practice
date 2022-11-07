@@ -2,6 +2,9 @@ import { loadFixture } from "@nomicfoundation/hardhat-network-helpers"
 import { expect } from "chai"
 import { ethers } from "hardhat"
 
+import { LogLevel, Logger } from '@ethersproject/logger'
+Logger.setLogLevel(LogLevel.ERROR)
+
 describe("compound", function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
