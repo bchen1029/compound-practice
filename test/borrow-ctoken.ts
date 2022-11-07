@@ -132,7 +132,7 @@ describe("compound", function () {
     await comptroller._setCloseFactor(ethers.utils.parseUnits("0.5", "18"))
 
     // _setLiquidationIncentive, 設定清償人獎勵
-    await comptroller._setLiquidationIncentive(ethers.utils.parseUnits("0.08", "18"))
+    await comptroller._setLiquidationIncentive(ethers.utils.parseUnits("1.08", "18"))
 
     // enterMarkets, 為 tokenA tokenB 提供流動性
     await comptroller.connect(user1).enterMarkets([cTokenA.address, cTokenB.address])
@@ -226,10 +226,10 @@ describe("compound", function () {
       expect(marketOfTokenB.collateralFactorMantissa).to.equal(ethers.utils.parseUnits("0.5", "18"))
     })
 
-    it("Should liquidationIncentive is 0.08", async function () {
+    it("Should liquidationIncentive is 1.08", async function () {
       const { comptroller } = await loadFixture(initSettingFixture)
 
-      expect(await comptroller.liquidationIncentiveMantissa()).to.equal(ethers.utils.parseUnits("0.08", "18"))
+      expect(await comptroller.liquidationIncentiveMantissa()).to.equal(ethers.utils.parseUnits("1.08", "18"))
     })
 
     it("Should close factor is 0.5", async function () {
