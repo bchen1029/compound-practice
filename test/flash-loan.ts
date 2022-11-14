@@ -91,9 +91,6 @@ async function deployFixture() {
   const FlashLoanContract = await ethers.getContractFactory("FlashLoan");
   const flashLoan = await FlashLoanContract.connect(user2).deploy(
     LENDING_POOL_ADDRESSES_PROVIDER_ADDRESS,
-    cTokenA.address,
-    cTokenB.address,
-    user1.address,
     SWAP_ROUTER_ADDRESS
   );
   await flashLoan.deployed();
@@ -281,11 +278,17 @@ describe("compound", function () {
     });
 
     it("Should user2 able to liquidate user1 by flashloan", async function () {
+      const abi = ethers.utils.defaultAbiCoder;
+      const params = abi.encode(
+        ["address", "address", "address", "address"],
+        [cTokenA.address, cTokenB.address, user1.address, user2.address]);
+
       await flashLoan.connect(user2).flashloan(
         USDC_ADDRESS,
-        ethers.utils.parseUnits("2500", "6")
+        ethers.utils.parseUnits("2500", "6"),
+        params
       );
-
+      
       expect(await tokenA.balanceOf(user2.address)).to.gt(ethers.utils.parseUnits("121", "6")) // 121.739940
       expect(await tokenA.balanceOf(user2.address)).to.lt(ethers.utils.parseUnits("122", "6")) // 121.739940
     });
