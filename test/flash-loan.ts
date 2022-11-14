@@ -138,7 +138,7 @@ describe("compound", function () {
           {
             forking: {
               jsonRpcUrl: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_MAINNET_KEY}`,
-              blockNumber: 14390000,
+              blockNumber: 15815693,
             },
           },
         ],
@@ -192,7 +192,7 @@ describe("compound", function () {
 
       // _setLiquidationIncentive, 設定清償人獎勵
       await comptroller._setLiquidationIncentive(
-        ethers.utils.parseUnits("1.1", "18")
+        ethers.utils.parseUnits("1.08", "18")
       );
 
       // enterMarkets, 為 tokenA tokenB 提供流動性
@@ -286,7 +286,8 @@ describe("compound", function () {
         ethers.utils.parseUnits("2500", "6")
       );
 
-      expect(await tokenA.balanceOf(user2.address)).to.gt(0) // 但算出來不是 121 USD @@!!
+      expect(await tokenA.balanceOf(user2.address)).to.gt(ethers.utils.parseUnits("121", "6")) // 121.739940
+      expect(await tokenA.balanceOf(user2.address)).to.lt(ethers.utils.parseUnits("122", "6")) // 121.739940
     });
   });
 });
